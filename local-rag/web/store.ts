@@ -38,8 +38,22 @@ export function fileValue(name: unknown, data: Buffer): string {
     name.length > 180
   )
     throw new ApiError(400, '无效的上传文件名')
-  if (!['.pdf', '.docx', '.md', '.markdown', '.txt'].includes(extname(name).toLowerCase()))
-    throw new ApiError(400, '支持PDF、DOCX、Markdown和TXT文件')
+  if (
+    ![
+      '.pdf',
+      '.docx',
+      '.md',
+      '.markdown',
+      '.txt',
+      '.png',
+      '.jpg',
+      '.jpeg',
+      '.webp',
+      '.xlsx',
+      '.pptx'
+    ].includes(extname(name).toLowerCase())
+  )
+    throw new ApiError(400, '支持PDF、DOCX、文本、PNG/JPG/WebP、XLSX和PPTX文件')
   if (!data.length || data.length > MAX_FILE)
     throw new ApiError(400, '文件不能为空，且不能超过30MB')
   return name
@@ -112,7 +126,10 @@ function publicDoc(doc: Document, includeText = true) {
     hasOriginal: Boolean(doc.originalFile)
   }
   if (!includeText) delete result.text
-  return result as unknown as Document & { chars: number; hasOriginal: boolean }
+  return result as unknown as Document & {
+    chars: number
+    hasOriginal: boolean
+  }
 }
 export async function atomic(path: string, value: unknown): Promise<void> {
   const temp = `${path}.${randomUUID()}.tmp`
@@ -163,7 +180,9 @@ export class Store {
   }
   async projects() {
     await mkdir(join(this.root, 'projects'), { recursive: true })
-    const entries = await readdir(join(this.root, 'projects'), { withFileTypes: true })
+    const entries = await readdir(join(this.root, 'projects'), {
+      withFileTypes: true
+    })
     const result = []
     for (const entry of entries.filter((e) => e.isDirectory() && ID.test(e.name))) {
       const p = await this.read(entry.name)
@@ -181,7 +200,12 @@ export class Store {
     return `rag_admin_${validId(id).replaceAll('-', '')}_v2`
   }
   async createProject(name: unknown) {
-    const p: Project = { id: randomUUID(), name: title(name), createdAt: Date.now(), documents: [] }
+    const p: Project = {
+      id: randomUUID(),
+      name: title(name),
+      createdAt: Date.now(),
+      documents: []
+    }
     await mkdir(join(this.path(p.id), 'originals'), { recursive: true })
     await atomic(join(this.path(p.id), 'project.json'), p)
     return {
@@ -255,7 +279,10 @@ export class Store {
     return this.serial(project, async (p) => {
       const doc = this.find(p, id, patch.version)
       if (doc.deletedAt) throw new ApiError(409, '请先从回收站恢复资料')
-      Object.assign(doc, fields(patch), { version: randomUUID(), updatedAt: Date.now() })
+      Object.assign(doc, fields(patch), {
+        version: randomUUID(),
+        updatedAt: Date.now()
+      })
       return publicDoc(doc)
     })
   }
@@ -301,11 +328,21 @@ export class Store {
       documents.push({
         ...publicDoc(doc),
         ...(original
-          ? { original: { name: original.name, base64: original.data.toString('base64') } }
+          ? {
+              original: {
+                name: original.name,
+                base64: original.data.toString('base64')
+              }
+            }
           : {})
       })
     }
-    const backup = { format: 'local-rag-backup', version: 1, project: { name: p.name }, documents }
+    const backup = {
+      format: 'local-rag-backup',
+      version: 1,
+      project: { name: p.name },
+      documents
+    }
     if (Buffer.byteLength(JSON.stringify(backup)) > MAX_BODY)
       throw new ApiError(413, '备份超过45MB，请使用停止服务后的完整备份方式')
     return backup
@@ -320,13 +357,22 @@ export class Store {
       throw new ApiError(400, '不是有效的知识库备份')
     const inputs = backup.documents.map((d: any) => {
       if (!d || typeof d !== 'object') throw new ApiError(400, '备份资料损坏')
-      const clean = fields({ name: d.name, text: d.text, tags: d.tags, modes: d.modes })
+      const clean = fields({
+        name: d.name,
+        text: d.text,
+        tags: d.tags,
+        modes: d.modes
+      })
       if (!clean.name || !clean.text) throw new ApiError(400, '备份缺少名称或正文')
       const original = d.original
         ? { name: d.original.name, data: decodeBase64(d.original.base64) }
         : undefined
       if (original) fileValue(original.name, original.data)
-      return { ...clean, original, deletedAt: d.deletedAt ? Date.now() : undefined }
+      return {
+        ...clean,
+        original,
+        deletedAt: d.deletedAt ? Date.now() : undefined
+      }
     })
     return this.serial(project, async (p) => {
       for (const input of inputs) {

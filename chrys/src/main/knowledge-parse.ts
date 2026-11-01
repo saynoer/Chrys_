@@ -1,3 +1,4 @@
+import { extractLocalDocument } from './document-import'
 import { readFile, stat } from 'fs/promises'
 import { extname } from 'path'
 import { KNOWLEDGE_EXTENSIONS } from '../shared/knowledge'
@@ -17,7 +18,7 @@ export async function extractFileText(filePath: string): Promise<string> {
   const ext = extname(filePath).slice(1).toLowerCase()
   if (ext === 'doc') throw new Error('不支持旧版 .doc，请用 Word 另存为 .docx 后再导入')
   if (!KNOWLEDGE_EXTENSIONS.includes(ext)) {
-    throw new Error('不支持这种文件，可导入 PDF、Word（.docx）、Markdown 和 TXT')
+    throw new Error('不支持这种文件，可导入 PDF、DOCX、Markdown、TXT、图片、XLSX 和 PPTX')
   }
 
   const info = await stat(filePath).catch(() => null)
@@ -36,7 +37,8 @@ export async function extractBufferText(
   if (!KNOWLEDGE_EXTENSIONS.includes(ext) || buffer.length > MAX_FILE_BYTES)
     throw new Error('文件类型不支持或超过30MB')
   let text: string
-  if (ext === 'pdf') text = await readPdf(buffer)
+  if (['pdf', 'png', 'jpg', 'jpeg', 'webp', 'xlsx', 'pptx'].includes(ext))
+    text = await extractLocalDocument(buffer, ext)
   else if (ext === 'docx') text = await readDocx(buffer)
   else text = decodeText(buffer)
 
@@ -52,20 +54,6 @@ export async function extractBufferText(
     throw new Error(`文字太多（${Math.round(text.length / 10000)} 万字），请只导入需要的部分`)
   }
   return text
-}
-
-async function readPdf(buffer: Buffer): Promise<string> {
-  const { extractText, getDocumentProxy } = await import('unpdf')
-  try {
-    const pdf = await getDocumentProxy(new Uint8Array(buffer))
-    const { text } = await extractText(pdf, { mergePages: false })
-    return text.join('\n\n')
-  } catch (error) {
-    if (error instanceof Error && error.name === 'PasswordException') {
-      throw new Error('PDF 有密码保护，请去掉密码后再导入')
-    }
-    throw new Error('PDF 解析失败，文件可能已损坏')
-  }
 }
 
 async function readDocx(buffer: Buffer): Promise<string> {

@@ -2,7 +2,11 @@ import { readFile, stat } from 'node:fs/promises'
 import { ApiError } from './store'
 export class Bridge {
   constructor(private file: string) {}
-  async call(method: string, args: unknown[] = [], timeout = 60_000): Promise<any> {
+  async call(
+    method: string,
+    args: unknown[] = [],
+    timeout = method === 'importFile' ? 210_000 : 60_000
+  ): Promise<any> {
     let discovery: { url: string; token: string }
     try {
       const info = await stat(this.file)
@@ -20,7 +24,10 @@ export class Bridge {
     try {
       response = await fetch(discovery.url + '/rpc', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${discovery.token}` },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${discovery.token}`
+        },
         body: JSON.stringify({ method, args }),
         signal: AbortSignal.timeout(timeout)
       })

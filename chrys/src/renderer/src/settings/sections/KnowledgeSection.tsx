@@ -137,7 +137,14 @@ export function KnowledgeSection() {
       const paths = [...e.dataTransfer.files]
         .map((file) => window.api.getPathForFile(file))
         .filter(Boolean)
-      if (paths.length > 0) handleImport(await window.api.importKnowledgeFiles(paths))
+      if (paths.length > 0) {
+        const progress = toast.loading('正在本地解析资料，OCR可能需要较长时间…')
+        try {
+          handleImport(await window.api.importKnowledgeFiles(paths))
+        } finally {
+          toast.dismiss(progress)
+        }
+      }
     }
   }
 
@@ -156,7 +163,14 @@ export function KnowledgeSection() {
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <Button
             size="sm"
-            onClick={async () => handleImport(await window.api.pickKnowledgeFiles())}
+            onClick={async () => {
+              const progress = toast.loading('选择文件后将在本机解析，OCR可能需要较长时间…')
+              try {
+                handleImport(await window.api.pickKnowledgeFiles())
+              } finally {
+                toast.dismiss(progress)
+              }
+            }}
           >
             <FileUp className="h-4 w-4" />
             导入文件
@@ -171,7 +185,8 @@ export function KnowledgeSection() {
             新建文本
           </Button>
           <span className="text-xs font-light">
-            支持 PDF、Word（.docx）、Markdown、TXT，也可以把文件拖到这里（选择弹窗可能被本窗口遮挡）
+            支持 PDF（含扫描件）、DOCX、Markdown、TXT、PNG/JPG/WebP、XLSX、PPTX；图片与扫描件在本机
+            OCR，耗时可能较长。也可拖入文件。
           </span>
         </div>
 

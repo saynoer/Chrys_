@@ -54,3 +54,7 @@ local-rag/runtime/chroma-env/bin/python local-rag/scripts/manage.py uninstall-pl
 3. 移除整套服务：核对 consumers 和全部 collections，先备份，再明确确认删除本目录下 runtime/models/data；其他项目仍在用时先迁移它们。不要删除 ~/.ollama 或其他应用目录。
 
 运行环境、模型、数据和日志均集中在本目录；操作台账在相邻 outputs/本地RAG操作台账.md。程序、依赖与模型版本及安装来源见 manifest.json 与 requirements.lock。
+
+## 本地 OCR 与 Office 导入
+
+支持 PNG/JPG/JPEG/WebP、扫描 PDF、XLSX、PPTX，与桌面共享解析组件。先在仓库根目录运行 `npm --prefix chrys run setup:ocr`，再运行 `node local-rag/web/build.cjs` 并重启管理网页。语言资源保存在 `chrys/resources/ocr/`，识别不联网。格式、大小、页数和精度限制见根 README 的本地 OCR 章节。

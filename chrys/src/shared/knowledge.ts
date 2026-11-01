@@ -51,7 +51,19 @@ export interface KnowledgeImportResult {
 export const KNOWLEDGE_CHAR_LIMIT = 30000
 
 /** File types the importer reads */
-export const KNOWLEDGE_EXTENSIONS = ['pdf', 'docx', 'md', 'markdown', 'txt']
+export const KNOWLEDGE_EXTENSIONS = [
+  'pdf',
+  'docx',
+  'md',
+  'markdown',
+  'txt',
+  'png',
+  'jpg',
+  'jpeg',
+  'webp',
+  'xlsx',
+  'pptx'
+]
 
 const CJK = /[\u3000-\u303f\u3400-\u9fff\uac00-\ud7af\uf900-\ufaff\uff00-\uffef]/g
 

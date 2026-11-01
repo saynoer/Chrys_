@@ -337,7 +337,7 @@ function renderView() {
           'div',
           { class: 'table-footer' },
           el('span', { id: 'doc-count' }),
-          el('span', {}, 'PDF · DOCX · Markdown · TXT')
+          el('span', {}, 'PDF · Word · 文本 · 图片OCR · XLSX · PPTX')
         )
       ),
       el(
@@ -800,7 +800,7 @@ function fileBase64(file) {
   })
 }
 async function uploadFiles() {
-  const files = await chooseFile('.pdf,.docx,.md,.markdown,.txt', true),
+  const files = await chooseFile('.pdf,.docx,.md,.markdown,.txt,.png,.jpg,.jpeg,.webp,.xlsx,.pptx', true),
     endpoint = base(),
     p = state.project
   if (!files.length) return
@@ -808,7 +808,7 @@ async function uploadFiles() {
   const failed = []
   for (let i = 0; i < files.length; i++) {
     const file = files[i]
-    toast(`正在导入 ${i + 1} / ${files.length}：${file.name}`)
+    toast(`正在本地解析（OCR可能较慢） ${i + 1} / ${files.length}：${file.name}`)
     try {
       if (file.size > 30 * 1024 * 1024) throw new Error('文件超过30MB')
       await api(endpoint + '/import', 'POST', { name: file.name, base64: await fileBase64(file) })

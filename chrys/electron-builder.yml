@@ -44,3 +44,9 @@ publish:
   repo: Chrys_
 electronDownload:
   mirror: https://npmmirror.com/mirrors/electron/
+
+extraResources:
+  - from: resources/ocr
+    to: ocr
+    filter:
+      - "**/*"

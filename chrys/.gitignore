@@ -8,3 +8,6 @@ dist
 
 node_modules
 .superpowers/
+
+# Local OCR language assets; prepared explicitly, never committed
+resources/ocr/

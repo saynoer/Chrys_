@@ -1,4 +1,4 @@
-# Chrys 1.0.0
+# Chrys
 
 Chrys 是一款集屏幕问答、实时语音对话辅助、本地 RAG 和知识库维护于一体的桌面应用。维护者与二次开发作者：**will**。
 
@@ -52,6 +52,7 @@ ollama --version
 git clone https://github.com/saynoer/Chrys_.git
 cd Chrys_
 npm --prefix chrys ci
+npm --prefix chrys run setup:ocr
 npm --prefix chrys test
 npm --prefix chrys run build
 ```
@@ -105,7 +106,7 @@ npm --prefix chrys run dev
 
 ## 4. 导入资料并开启 RAG
 
-1. 打开桌面设置中的“资料库”，导入 PDF、DOCX、Markdown 或 TXT，也可粘贴文字。扫描 PDF 若没有可提取文本，需要先自行 OCR。
+1. 打开桌面设置中的“资料库”，导入 PDF（含扫描件）、DOCX、Markdown、TXT、PNG/JPG/JPEG/WebP 图片、XLSX 或 PPTX，也可粘贴文字。图片和无文字 PDF 页面在本机进行中英文 OCR。
 2. 将资料启用到实际使用的模式，例如“对话模式”；未启用的资料不会作为该模式的上下文。
 3. 把资料检索模式切换到“本地 RAG/本地检索”，等待索引完成；必要时执行重建索引。全文模式不走本地向量检索。
 4. 打开 http://127.0.0.1:18080 ，进入桌面资料库，确认文档、原文、分片和索引状态。桌面必须运行，网页才可维护桌面资料。
@@ -114,6 +115,21 @@ npm --prefix chrys run dev
 **验证例子**：导入测试文本“Chrys 安装演示的内部代号是青松 731。”，启用到对话模式并建立索引。询问“安装演示的内部代号是什么？”，检索应包含该原文，回答应给出“青松 731”。再询问资料没有记载的事实，检查是否出现无依据的编造。测试结束可删除演示资料并更新索引。
 
 网页新建的独立知识库可供其他项目使用，但**不会自动加入桌面回答上下文**。要让 Chrys 使用资料，应放入桌面资料库并启用相应模式。其他项目接入见 [跨项目接入指南](docs/本地RAG跨项目接入指南.md)和 `local-rag/examples/`；当前管理服务没有通用云端 `/ask` 接口。
+
+## 本地 OCR、Excel 与 PPT 使用说明
+
+首次安装运行 `npm --prefix chrys run setup:ocr`，从官方 Tesseract 资源仓库下载中英文语言资源到 `chrys/resources/ocr/`，约 31 MB（压缩文件合计）；脚本校验固定 SHA256 并记录来源。依赖引擎随 npm 安装。识别时不调用云端 OCR、不下载模型；打包应用把资源复制到 `Chrys.app/Contents/Resources/ocr/`。网页独立项目使用源码资源，桌面项目使用运行中应用的资源。
+
+- 图片：PNG、JPEG/JPG、WebP，中英文印刷文字；清晰、正向图片通常更好。手写字、复杂公式和复杂表格不保证识别准确。
+- PDF：保留页码；有文字的页面直接提取，无有效文字的页面才渲染识别。混合页面中已有文字旁的图片文字不会自动全部补识别。
+- XLSX：保留工作表名称、行号和单元格坐标，读取保存的公式缓存值；无缓存时提示重新计算并保存，不执行公式或宏。不重现完整样式和图表，也不 OCR Excel 嵌入图片。旧 XLS 请另存为 XLSX。
+- PPTX：按演示文稿页序提取文字、备注和嵌入的 PNG/JPEG/WebP 位图文字，不访问外部链接图片。不保证完整视觉阅读顺序；旧 PPT 请另存为 PPTX。
+- 单文件仍为 30 MB；PDF/PPT 最多 150 页，PPT 最多 150 张识别图片，图片最多 2000 万像素且单边不超过 16000；Office ZIP 最多 3000 条目、单条解压 5 MB、合计 80 MB，Excel 最多 10 万单元格。超过限制请拆分或缩小文件。
+- 单次本地解析最长 180 秒；临时文件在完成、失败或超时后清理。桌面导入文本上限 20 万字符，网页独立项目上限 200 万字符，不会静默截断。解析成功后请在原文编辑器核对识别结果再建立/更新索引。
+
+开发验证：`npm --prefix chrys run build:documents` 后运行 `CHRYS_TEST_OCR=1 node --test chrys/tests/document-real.test.cjs`，用合成图片、扫描/混合 PDF 和 PPTX 实际验证本地识别。默认单元测试不要求下载语言资源。
+
+移除 OCR 资源：关闭正在识别的任务后，可删除 `chrys/resources/ocr/`；重新运行准备命令可恢复。该操作不删除知识库或 Chroma 向量数据。移除打包应用则同时移除其中的 OCR 资源。
 
 ## 5. 日常使用、停止与备份
 
@@ -154,7 +170,7 @@ npm --prefix chrys run build:mac
 Git、Node 24、Python 3.11、Ollama、磁盘及 11435/18000/18080 端口。
 按 README 在用户指定目录克隆；已存在仓库时检查状态，不覆盖修改。
 使用 npm ci 和 requirements.lock，建立仓库内隔离运行环境，构建桌面及管理网页。
-使用 manage.py 启动本项目拥有的本地服务，下载 bge-m3，检查三个服务健康。
+使用 manage.py 启动本项目拥有的本地服务，运行 npm --prefix chrys run setup:ocr 准备本地 OCR 资源，下载 bge-m3，检查三个服务健康。
 以 SHIPING_RAG_USER_DATA=<仓库绝对路径>/local-rag/data/shiping-trial 启动桌面，
 指导我在本机输入模型密钥及完成系统授权，不读取或回显密钥，不提交私人数据。
 指导我开启本地 RAG、导入演示资料并在网页和桌面分别验证召回及回答。

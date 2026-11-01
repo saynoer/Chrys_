@@ -240,7 +240,7 @@ ipcMain.handle('knowledge:pick-files', async () => {
   const result = await dialog.showOpenDialog({
     title: '导入资料',
     properties: ['openFile', 'multiSelections'],
-    filters: [{ name: 'PDF、Word、Markdown、TXT', extensions: KNOWLEDGE_EXTENSIONS }]
+    filters: [{ name: '文档、图片、Excel、PPT（本地OCR）', extensions: KNOWLEDGE_EXTENSIONS }]
   })
   if (result.canceled || result.filePaths.length === 0) return null
   return importFiles(result.filePaths)
