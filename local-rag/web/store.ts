@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile, rename, readdir, lstat, unlink } from 'node:fs/promises'
 import { join, basename, extname } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { normalizeText } from '../../shiping-rag/src/main/knowledge-parse'
+import { normalizeText } from '../../chrys/src/main/knowledge-parse'
 
 export class ApiError extends Error {
   constructor(

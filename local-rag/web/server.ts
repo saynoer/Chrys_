@@ -5,10 +5,10 @@ import { join, resolve, extname, basename } from 'node:path'
 import { Store, ApiError, decodeBase64, fileValue, MAX_BODY, MAX_TEXT, validId } from './store'
 import { Indexes, COLLECTIONS } from './vectors'
 import { Bridge } from './bridge'
-import { extractBufferText } from '../../shiping-rag/src/main/knowledge-parse'
-import { request } from '../../shiping-rag/src/main/rag/client'
-import { localHost, json, readJSON, errorResponse } from '../../shiping-rag/src/main/rag/local-http'
-import type { RagIndex } from '../../shiping-rag/src/main/rag/index'
+import { extractBufferText } from '../../chrys/src/main/knowledge-parse'
+import { request } from '../../chrys/src/main/rag/client'
+import { localHost, json, readJSON, errorResponse } from '../../chrys/src/main/rag/local-http'
+import type { RagIndex } from '../../chrys/src/main/rag/index'
 type IO = ConstructorParameters<typeof RagIndex>[0]
 interface Options {
   root: string

@@ -1,7 +1,7 @@
 const fs = require('node:fs'),
   path = require('node:path'),
   { createRequire } = require('node:module')
-const deps = createRequire(path.resolve(__dirname, '../../../shiping-rag/package.json'))
+const deps = createRequire(path.resolve(__dirname, '../../../chrys/package.json'))
 const ts = deps('typescript')
 module.exports = function load(file, mocks = {}, cache = new Map()) {
   file = path.resolve(__dirname, '..', file)

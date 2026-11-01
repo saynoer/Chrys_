@@ -1,7 +1,7 @@
 const path = require('node:path'),
   fs = require('node:fs'),
   { createRequire } = require('node:module')
-const source = path.resolve(__dirname, '../../shiping-rag'),
+const source = path.resolve(__dirname, '../../chrys'),
   deps = createRequire(path.join(source, 'package.json'))
 const modules = path.join(__dirname, 'node_modules')
 if (!fs.existsSync(modules)) fs.symlinkSync(path.join(source, 'node_modules'), modules, 'dir')

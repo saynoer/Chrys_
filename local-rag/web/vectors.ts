@@ -1,15 +1,15 @@
 import { existsSync, readFileSync, lstatSync } from 'node:fs'
 import { join } from 'node:path'
 import { Store, atomic, ApiError } from './store'
-import { RagIndex } from '../../shiping-rag/src/main/rag/index'
-import { chunkDocument, revisionOf } from '../../shiping-rag/src/main/rag/chunks'
-import * as client from '../../shiping-rag/src/main/rag/client'
+import { RagIndex } from '../../chrys/src/main/rag/index'
+import { chunkDocument, revisionOf } from '../../chrys/src/main/rag/chunks'
+import * as client from '../../chrys/src/main/rag/client'
 import {
   CHROMA_URL,
   COLLECTION,
   type RagChunk,
   type RagHit
-} from '../../shiping-rag/src/shared/rag'
+} from '../../chrys/src/shared/rag'
 export const COLLECTIONS = `${CHROMA_URL}/api/v2/tenants/default_tenant/databases/default_database/collections`
 export function vectorIO(store: Store, project: string) {
   const name = store.collection(project),

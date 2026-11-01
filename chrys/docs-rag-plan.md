@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Root: `<项目根目录>/local-rag/`; editable source copy: sibling `shiping-rag/`.
+- Root: `<项目根目录>/local-rag/`; editable source copy: sibling `chrys/`.
 - No Docker, system PATH changes, login startup items, or changes to `/Applications/识屏.app`.
 - Ollama: `127.0.0.1:11435`; Chroma: `127.0.0.1:18000`; collection `shiping_knowledge_bgem3_v1`.
 - Separate models, data, runtime, logs and process records under the dedicated root. Never log credentials or full user documents.
@@ -37,8 +37,8 @@
 - `local-rag/scripts/manage.py`: setup/start/stop/status/backup/uninstall-plan, process identity and manifest bookkeeping.
 - `local-rag/manifest.json`, `README.md`, `requirements.lock`: owned paths, consumers, versions and reuse instructions.
 - `local-rag/examples/reuse.py`, `reuse.mjs`: separate synthetic collection using standard HTTP APIs.
-- `shiping-rag/src/shared/rag.ts`: typed config, status, chunk, hit and preview payloads.
-- `shiping-rag/src/main/rag/{chunks,client,index,retrieve,ipc}.ts`: chunking, local HTTP, index generations, query fusion and IPC.
+- `chrys/src/shared/rag.ts`: typed config, status, chunk, hit and preview payloads.
+- `chrys/src/main/rag/{chunks,client,index,retrieve,ipc}.ts`: chunking, local HTTP, index generations, query fusion and IPC.
 - Existing `knowledge.ts`, `ai.ts`, settings/preload files and KnowledgeSection: lifecycle hooks, context attachment and controls.
 - New `RagSettings.tsx` and tests; preserve existing shadcn primitives.
 
@@ -46,7 +46,7 @@
 
 **Interfaces:** `manage.py {setup,start,status,stop,backup,uninstall-plan}` returns nonzero on failure; `status` emits JSON with service identity, endpoint and readiness. Manifest tracks versions, checksums, ownership, baseline consumers and timestamps.
 
-- [ ] Prepare `shiping-rag/` as a separate local clone from the known baseline, check repository instructions, commit approved spec/plan there, and run 13-test baseline plus typecheck. Use existing locked dependencies where possible; record any installation.
+- [ ] Prepare `chrys/` as a separate local clone from the known baseline, check repository instructions, commit approved spec/plan there, and run 13-test baseline plus typecheck. Use existing locked dependencies where possible; record any installation.
 - [ ] Write Python unittest cases `test_foreign_port_is_rejected`, `test_reused_pid_is_not_stopped`, `test_uninstall_plan_is_read_only`, `test_shared_consumer_blocks_whole_removal`; assert no unrelated kill, removal or directory writes.
 - [ ] Run those tests and record failing results before implementation.
 - [ ] Implement lifecycle tooling with subprocess argument lists, absolute paths, process start identity and owner checks, loopback listeners, bounded readiness deadlines, per-action manifest updates and safe partial-start cleanup.

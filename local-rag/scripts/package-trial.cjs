@@ -1,5 +1,5 @@
 const path=require('node:path'),fs=require('node:fs'),cp=require('node:child_process'),crypto=require('node:crypto')
-const root=path.resolve(__dirname,'../..'),source=path.join(root,'shiping-rag'),asar=require(path.join(source,'node_modules/@electron/asar'))
+const root=path.resolve(__dirname,'../..'),source=path.join(root,'chrys'),asar=require(path.join(source,'node_modules/@electron/asar'))
 const staging=path.join(root,'work/trial-app-source'),app=path.join(root,'outputs/Chrys.app'),plist=path.join(app,'Contents/Info.plist')
 if(!fs.existsSync(app))cp.execFileSync('ditto',[path.join(root,'outputs/识屏RAG试用.app'),app])
 

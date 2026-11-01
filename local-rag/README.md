@@ -1,14 +1,16 @@
+> 完整首次安装与使用步骤见仓库根目录 README.md（桌面源码目录为 chrys/）。
+
 # 可复用本地 RAG 服务
 
-本目录独立于识屏源码。Ollama 生成 BGE-M3 向量，Chroma 持久保存各项目集合；DeepSeek 和阿里云语音配置不属于此服务。
+本目录独立于 Chrys 桌面源码。Ollama 生成 BGE-M3 向量，Chroma 持久保存各项目集合；DeepSeek 和阿里云语音配置不属于此服务。
 
 ## 本机管理网页
 
 新增 `http://127.0.0.1:18080`，支持多项目、原文增删改查、原文件上传下载、软删除恢复、分片浏览、检索测试、索引状态和JSON备份追加恢复。仅监听回环，不部署公网。
 
-本机可双击相邻 `outputs/启动本地知识库管理.command`。识屏资料通过运行中的 `3.4.0-rag.3` 试用版统一写入，新项目可独立使用。源文件与数据均不进入Git。完整本机操作和REST接口见相邻 `outputs/本地知识库管理说明.md`。
+本机可双击相邻 `outputs/启动本地知识库管理.command`。识屏资料通过运行中的 Chrys 1.0.0统一写入，新项目可独立使用。源文件与数据均不进入Git。完整本机操作和REST接口见相邻 `outputs/本地知识库管理说明.md`。
 
-源码克隆到新环境时，先在相邻 `shiping-rag/` 安装锁定的Node依赖，准备 `runtime/node/bin/node` 指向可用Node（验证版本24.22.1），再运行 `node web/build.cjs`。构建仅复用已有esbuild、unpdf和mammoth；不另装网页框架或模型。依赖链接与web/dist均忽略。
+源码克隆到新环境时，先在相邻 `chrys/` 安装锁定的Node依赖，准备 `runtime/node/bin/node` 指向可用Node（验证版本24.22.1），再运行 `node web/build.cjs`。构建仅复用已有esbuild、unpdf和mammoth；不另装网页框架或模型。依赖链接与web/dist均忽略。
 
 ## 启动、状态、停止
 

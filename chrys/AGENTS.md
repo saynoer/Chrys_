@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**识屏 Shiping** (package `shiping`; called 截屏解题助手 / interview-coder-cn until 2026-10, see Legacy Name) is a desktop application that captures screenshots of whatever is on screen (coding challenges, exam questions, code, error messages, charts, foreign-language text, or anything else) and uses AI (vision models) to answer about it in real-time. The window is invisible to screen-sharing software, so it stays usable while the screen is shared.
+**Chrys** (package `chrys`; called 截屏解题助手 / interview-coder-cn until 2026-10, see Legacy Name) is a desktop application that captures screenshots of whatever is on screen (coding challenges, exam questions, code, error messages, charts, foreign-language text, or anything else) and uses AI (vision models) to answer about it in real-time. The window is invisible to screen-sharing software, so it stays usable while the screen is shared.
 
 Key capabilities:
 - Global shortcuts trigger screenshot capture → AI analysis → streamed solution display
