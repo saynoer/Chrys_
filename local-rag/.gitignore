@@ -1,0 +1,13 @@
+runtime/
+models/
+data/
+logs/
+run/
+backups/
+__pycache__/
+*.pyc
+
+manifest.json
+node_modules
+web/dist/
+.superpowers/

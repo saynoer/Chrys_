@@ -1,0 +1,193 @@
+@import './base.css';
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply text-foreground;
+  }
+}
+
+#app-header {
+  @apply h-9;
+  background: var(--app-header-bg);
+  color: var(--app-header-fg);
+  border-bottom: 1px solid var(--app-header-border);
+  -webkit-app-region: drag;
+  .actions {
+    -webkit-app-region: no-drag;
+    /* The window buttons must never be squeezed out by the title or the model
+       name; they are the only way to reach settings or close the window */
+    flex-shrink: 0;
+    /* The buttons sit flush against the window edges, where the resize handles
+       are; same z-index but later in the DOM, so clicks reach the buttons */
+    position: relative;
+    z-index: 2147483647;
+  }
+}
+
+#app-content {
+  @apply h-[calc(100vh-36px)] overflow-y-auto;
+  background: var(--app-surface-bg);
+  color: var(--app-surface-fg);
+}
+
+/* 对话模式: one surface under the columns and the status bar; each column scrolls on its own */
+.conversation-page {
+  background: var(--app-surface-bg);
+  color: var(--app-surface-fg);
+}
+
+.panel-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--app-scrollbar-thumb) transparent;
+}
+
+.transcription-scroll {
+  overflow: auto;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+.transcription-scroll:hover {
+  scrollbar-color: var(--app-scrollbar-thumb) transparent;
+}
+.transcription-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+.transcription-scroll::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 2px;
+}
+.transcription-scroll:hover::-webkit-scrollbar-thumb {
+  background: var(--app-scrollbar-thumb);
+}
+
+.overlay-toolbar {
+  @apply flex h-11 items-center gap-0.5 rounded-md p-2;
+  background: var(--app-panel-bg);
+  color: var(--app-panel-fg);
+  /* Drawn inside the box: a real border would steal 2px from the window height
+     the button-fit measurement in OverlayToolbar is calibrated against */
+  outline: 1px solid var(--app-panel-border);
+  outline-offset: -1px;
+  box-shadow: var(--app-panel-shadow);
+  -webkit-app-region: no-drag;
+}
+
+.overlay-toolbar button {
+  @apply relative size-7 shrink-0 cursor-default overflow-hidden;
+}
+.overlay-toolbar button:hover {
+  background: var(--app-hover-bg);
+  color: var(--app-hover-fg);
+}
+
+/* Fills up over the dwell time, so hover-to-trigger is visible before it fires */
+.dwell-progress {
+  @apply pointer-events-none absolute inset-x-0 bottom-0 h-0.5 origin-left;
+  background: var(--app-dwell-fg);
+  animation: dwell-fill linear forwards;
+}
+
+@keyframes dwell-fill {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+.window-resize-handle {
+  position: fixed;
+  z-index: 2147483647;
+  -webkit-app-region: no-drag;
+  touch-action: none;
+}
+.window-resize-n,
+.window-resize-s {
+  left: 10px;
+  right: 10px;
+  height: 6px;
+  cursor: ns-resize;
+}
+.window-resize-e,
+.window-resize-w {
+  top: 10px;
+  bottom: 10px;
+  width: 6px;
+  cursor: ew-resize;
+}
+.window-resize-n {
+  top: 0;
+}
+.window-resize-s {
+  bottom: 0;
+}
+.window-resize-e {
+  right: 0;
+}
+.window-resize-w {
+  left: 0;
+}
+.window-resize-ne,
+.window-resize-se,
+.window-resize-sw,
+.window-resize-nw {
+  width: 10px;
+  height: 10px;
+}
+.window-resize-ne {
+  top: 0;
+  right: 0;
+  cursor: nesw-resize;
+}
+.window-resize-se {
+  right: 0;
+  bottom: 0;
+  cursor: nwse-resize;
+}
+.window-resize-sw {
+  bottom: 0;
+  left: 0;
+  cursor: nesw-resize;
+}
+.window-resize-nw {
+  top: 0;
+  left: 0;
+  cursor: nwse-resize;
+}
+
+/* The toolbar window holds nothing but the toolbar, so it must never scroll */
+body:has(.overlay-toolbar-root) {
+  overflow: hidden;
+}
+
+/*
+ * Resizing the toolbar window never rescales its buttons: the bar simply takes
+ * the whole window, and OverlayToolbar drops the buttons that no longer fit.
+ * `overflow` is the backstop for the rounding the button count cannot cover.
+ */
+.overlay-toolbar-root {
+  height: 100vh;
+  overflow: hidden;
+}
+
+/*
+ * The toolbar can always be resized, but its edges must stay silent: a resize
+ * cursor flickering under the pointer is the very thing the main window's
+ * setting exists to avoid. macOS suppresses it anyway (it only updates the
+ * cursor for the active window, which this one can never be); Windows does not.
+ */
+body:has(.overlay-toolbar-root) .window-resize-handle {
+  cursor: default;
+}
+
+/* Width-only resizing has no corner handles to leave room for */
+.window-resize-e.window-resize-no-corners,
+.window-resize-w.window-resize-no-corners {
+  top: 0;
+  bottom: 0;
+}

@@ -1,0 +1,12 @@
+const path=require('node:path'),fs=require('node:fs'),cp=require('node:child_process'),crypto=require('node:crypto')
+const root=path.resolve(__dirname,'../..'),source=path.join(root,'shiping-rag'),asar=require(path.join(source,'node_modules/@electron/asar'))
+const staging=path.join(root,'work/trial-app-source'),app=path.join(root,'outputs/Chrys.app'),plist=path.join(app,'Contents/Info.plist')
+if(!fs.existsSync(app))cp.execFileSync('ditto',[path.join(root,'outputs/识屏RAG试用.app'),app])
+cp.execFileSync('ditto',[path.join(source,'out'),path.join(staging,'out')])
+const pkg=JSON.parse(fs.readFileSync(path.join(source,'package.json')));pkg.name='chrys';pkg.version='1.0.0';fs.writeFileSync(path.join(staging,'package.json'),JSON.stringify(pkg))
+;(async()=>{
+ const archive=path.join(app,'Contents/Resources/app.asar');await asar.createPackage(staging,archive)
+ const hash=crypto.createHash('sha256').update(asar.getRawHeader(archive).headerString).digest('hex')
+ for(const cmd of ['Set :CFBundleIdentifier local.shiping.rag.trial','Set :CFBundleName 识屏','Set :CFBundleDisplayName Chrys','Set :CFBundleShortVersionString 1.0.0','Set :CFBundleVersion 1.0.0',`Set :ElectronAsarIntegrity:Resources/app.asar:hash ${hash}`])cp.execFileSync('/usr/libexec/PlistBuddy',['-c',cmd,plist])
+ cp.execFileSync('codesign',['--force','--deep','--sign','-',app],{stdio:'inherit'});cp.execFileSync('codesign',['--verify','--deep','--strict',app],{stdio:'inherit'});console.log('Trial package updated and signature verified')
+})().catch(e=>{console.error(e);process.exitCode=1})

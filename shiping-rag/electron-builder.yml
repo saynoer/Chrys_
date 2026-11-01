@@ -1,0 +1,46 @@
+appId: com.electron.app # 改名后不变：macOS 的权限授予和 Windows 安装的升级都认它
+productName: Chrys
+extraMetadata:
+  # Windows exe 的 FileDescription 取自 description，任务管理器「进程」页显示的就是它；package.json 的那句长介绍留给仓库
+  description: Chrys
+directories:
+  buildResources: build
+files:
+  - '!**/.vscode/*'
+  - '!src/*'
+  - '!relay/**' # 手机同步的中转服务，单独部署；应用内的局域网页面已打进 main
+  - '!tests/**'
+  - '!electron.vite.config.{js,ts,mjs,cjs}'
+  - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
+  - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
+  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+asarUnpack:
+  - resources/**
+afterPack: build/after-pack.mjs # macOS 由它用自签名证书签名，原因见文件开头
+win:
+  executableName: Chrys # 任务管理器「详细信息」页显示的文件名；快捷方式和卸载列表仍用 productName「识屏」
+nsis:
+  artifactName: ${name}-${version}-setup.${ext}
+  shortcutName: ${productName}
+  uninstallDisplayName: ${productName}
+  createDesktopShortcut: always
+mac:
+  artifactName: ${name}-${version}-${arch}-mac.${ext}
+  identity: null # 关掉 electron-builder 自带的签名，改由 afterPack 签
+  publish: null # macOS 版没有 Apple 签名，不做自动更新；应用内只提示新版本并链接到发布页
+  extendInfo:
+    - NSCameraUsageDescription: Application requests access to the device's camera.
+    - NSMicrophoneUsageDescription: Application requests access to the device's microphone.
+    - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
+    - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
+  notarize: false
+dmg:
+  # macOS 只构建 CI runner 所在架构（arm64），文件名带上架构避免误下载
+  artifactName: ${name}-${version}-${arch}.${ext}
+npmRebuild: false
+publish:
+  provider: github
+  owner: saynoer
+  repo: Chrys_
+electronDownload:
+  mirror: https://npmmirror.com/mirrors/electron/
