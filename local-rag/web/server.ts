@@ -1,3 +1,4 @@
+import { ProcessingJobs } from '../../chrys/src/main/document-processing/jobs'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
@@ -43,6 +44,12 @@ function pageNumber(value: string | null, fallback: number, max: number) {
 }
 export function createAdminServer(options: Options) {
   const store = new Store(join(options.root, 'data', 'admin'))
+  const library = store.getLibrary(),
+    processing = library
+      ? new ProcessingJobs(library, join(options.root, 'data/library'), (project) => {
+          if (project === 'shiping') void bridge.call('refresh', []).catch(() => {})
+        })
+      : undefined
   const indexes = new Indexes(
     store,
     options.ioFactory ? (id) => options.ioFactory!(store, id) : undefined
@@ -91,7 +98,12 @@ export function createAdminServer(options: Options) {
       get: (doc: string) => store.get(id, doc),
       create: (v: any) =>
         changed(() =>
-          store.create(id, { name: v.name, text: v.text, modes: v.modes, tags: v.tags })
+          store.create(id, {
+            name: v.name,
+            text: v.text,
+            modes: v.modes,
+            tags: v.tags
+          })
         ),
       update: (doc: string, v: any) => changed(() => store.update(id, doc, v)),
       trash: (doc: string, v: unknown) => changed(() => store.trash(id, doc, v)),
@@ -264,6 +276,102 @@ export function createAdminServer(options: Options) {
       const a = adapter(parts[2]),
         doc = parts[4],
         action = parts[5]
+      if (parts[3] === 'generations') {
+        if (!library) throw new ApiError(409, '尚未启用SQLite')
+        if (req.method === 'GET') {
+          json(res, 200, {
+            active: library.generation(parts[2])?.id,
+            items: library.generations(parts[2])
+          })
+          return
+        }
+        if (req.method === 'POST' && parts[5] === 'rollback') {
+          const body = await object(req)
+          if (body.confirm !== true) throw new ApiError(400, '需要明确确认回退')
+          const id = validId(parts[4]),
+            target = library.generation(parts[2], id)
+          if (!target) throw new ApiError(404, '代际不存在')
+          const { fingerprint } = await import('../../chrys/src/main/rag/client')
+          if ((await fingerprint()) !== target.fingerprint)
+            throw new ApiError(409, '模型指纹不一致，不能直接回退')
+          const remote = await request<{ id: string }>(`${COLLECTIONS}/${target.collection}`)
+          const count = await request<number>(`${COLLECTIONS}/${remote.id}/count`)
+          if (count !== target.chunks.length)
+            throw new ApiError(409, '目标索引丢失或不完整，请先重建')
+          const { id: active } = library.rollbackGeneration(parts[2], id)
+          json(res, 200, { active })
+          return
+        }
+      }
+      if (parts[3] === 'processing') {
+        if (!processing) throw new ApiError(409, '结构化资料库尚未迁移启用')
+        const project = parts[2],
+          id = parts[4],
+          operation = parts[5]
+        if (parts.length === 4) {
+          if (req.method === 'GET') {
+            json(res, 200, processing.list(project))
+            return
+          }
+          if (req.method === 'POST') {
+            const body = await object(req)
+            if (body.docId) validId(body.docId)
+            const file = body.base64
+              ? {
+                  name: fileValue(body.name, decodeBase64(body.base64)),
+                  data: decodeBase64(body.base64)
+                }
+              : await a.original(body.docId)
+            json(res, 202, await processing.submit(project, body.docId, file))
+            return
+          }
+        }
+        validId(id)
+        if (req.method === 'GET') {
+          const job = processing.get(project, id)
+          if (operation === 'original') {
+            const file = await processing.original(project, id)
+            attachment(res, file.name, file.data)
+            return
+          }
+          if (operation === 'markdown') {
+            if (!job.result) throw new ApiError(409, '尚无解析结果')
+            attachment(res, 'cleaned.md', job.result.cleaned, 'text/markdown; charset=utf-8')
+            return
+          }
+          if (operation === 'json') {
+            attachment(
+              res,
+              'processing-report.json',
+              JSON.stringify(job, null, 2),
+              'application/json; charset=utf-8'
+            )
+            return
+          }
+          json(res, 200, job)
+          return
+        }
+        if (req.method === 'POST') {
+          const body = await object(req)
+          if (operation === 'review') {
+            json(res, 200, processing.review(project, id, body))
+            return
+          }
+          if (operation === 'cancel') {
+            json(res, 200, processing.cancel(project, id))
+            return
+          }
+          if (operation === 'retry') {
+            json(res, 202, processing.retry(project, id, body.password))
+            return
+          }
+          if (operation === 'apply') {
+            json(res, 202, processing.apply(project, id, body.version))
+            return
+          }
+        }
+        throw new ApiError(404, '处理接口不存在')
+      }
       if (parts[3] === 'documents') {
         if (parts.length === 4 && req.method === 'GET') {
           const q = url.searchParams.get('q') ?? ''
@@ -332,6 +440,20 @@ export function createAdminServer(options: Options) {
         if (req.method === 'POST') {
           const body = await object(req)
           if (operation === 'import') {
+            if (processing) {
+              const data = decodeBase64(body.base64),
+                name = fileValue(body.name, data)
+              const job = await processing.submit(parts[2], undefined, {
+                name,
+                data
+              })
+              json(res, 202, {
+                pending: true,
+                jobId: job.id,
+                docId: job.docId
+              })
+              return
+            }
             json(res, 201, await a.importFile(body))
             return
           }
@@ -351,6 +473,10 @@ export function createAdminServer(options: Options) {
       }
       throw new ApiError(404, '接口不存在')
     })().catch((error) => errorResponse(res, error))
+  })
+  server.on('close', () => {
+    processing?.close()
+    store.close()
   })
   server.requestTimeout = 60_000
   return server

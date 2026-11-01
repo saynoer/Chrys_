@@ -3,8 +3,8 @@ import { createServer } from 'node:http'
 import { randomBytes } from 'node:crypto'
 import { mkdir, writeFile, rename, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
-import { knowledgeAdmin, getRagDocuments } from '../knowledge'
-import { getIndex, queueReconcile, getRagStatus } from './service'
+import { knowledgeAdmin, getRagDocuments, refreshKnowledge } from '../knowledge'
+import { queueReconcile, getRagStatus, searchRag } from './service'
 import { createAdminHandler } from './admin-http'
 export async function startAdminBridge(): Promise<void> {
   const token = randomBytes(32).toString('hex')
@@ -27,6 +27,7 @@ export async function startAdminBridge(): Promise<void> {
       return result
     }
   }
+  methods.refresh = refreshKnowledge
   methods.status = getRagStatus
   methods.rebuild = () => schedule(true)
   methods.search = async (query: unknown, mode: unknown = 'conversation') => {
@@ -37,7 +38,7 @@ export async function startAdminBridge(): Promise<void> {
       (mode !== 'conversation' && mode !== 'screenshot')
     )
       throw new Error('请输入有效的问题和模式')
-    const hits = await getIndex().retrieve(mode, query),
+    const hits = await searchRag(query,mode),
       live = getRagDocuments()
     return hits.filter((h) =>
       live.some((d) => d.id === h.docId && d.revision === h.revision && d.modes.includes(mode))

@@ -19,6 +19,7 @@ const views = {
   documents: ['资料库', '管理原文，让每一次检索都有据可循。', '▤'],
   chunks: ['分片浏览', '查看正文如何被切分，以及每个片段的来源。', '▦'],
   search: ['检索测试', '输入一个问题，查看知识库实际找到了什么。', '⌕'],
+  processing: ['处理与清洗', '查看逐页结果、复核清洗改动，再启用候选索引。', '◈'],
   tasks: ['索引任务', '查看资料索引的当前状态，处理失败并重新建立。', '◷'],
   backups: ['备份与恢复', '保存原文与源文件，让知识可以安心积累。', '↧'],
   services: ['服务与集合', '检查本机连接，浏览已有向量集合中的记录。', '◎']
@@ -108,6 +109,7 @@ function ask(title, message, options = {}) {
   const dialog = $('confirm-dialog'),
     input = options.input
       ? el('input', {
+          type: options.password ? 'password' : 'text',
           placeholder: options.placeholder ?? '',
           maxlength: '80',
           value: options.value ?? '',
@@ -158,7 +160,9 @@ async function discard() {
   }
   return (
     !state.dirty ||
-    (await ask('还有未保存的修改', '放弃后，这次编辑的内容不会保存。', { ok: '放弃更改' }))
+    (await ask('还有未保存的修改', '放弃后，这次编辑的内容不会保存。', {
+      ok: '放弃更改'
+    }))
   )
 }
 function closeDrawer() {
@@ -249,7 +253,12 @@ async function createProject() {
   toast('知识库已创建，可以添加资料了')
 }
 function statePill(status = state.status) {
-  const map = { ready: '索引就绪', indexing: '正在更新', error: '需要处理', idle: '尚未建立' }
+  const map = {
+    ready: '索引就绪',
+    indexing: '正在更新',
+    error: '需要处理',
+    idle: '尚未建立'
+  }
   return el(
     'span',
     { class: 'pill ' + (status?.state ?? 'idle') },
@@ -371,6 +380,10 @@ function renderView() {
       )
     )
   else if (state.view === 'search') renderSearch(content)
+  else if (state.view === 'processing')
+    content.append(
+      el('section', { class: 'panel', id: 'processing-body' }, muted('正在载入处理记录…'))
+    )
   else if (state.view === 'tasks')
     content.append(
       el('section', { class: 'panel', id: 'task-body' }),
@@ -402,6 +415,7 @@ async function refreshView() {
     await loadServices()
     return
   }
+  if (view === 'processing') await loadProcessing()
   if (view === 'documents') await loadDocuments()
   if (view === 'chunks') {
     const docs = await api(base() + '/documents')
@@ -527,6 +541,7 @@ function drawDocuments() {
               ? button('恢复', () => restoreDoc(d), 'small')
               : [
                   button('编辑', () => openEditor(d.id), 'small quiet'),
+                  button('处理/清洗', () => startProcessing(d), 'small quiet'),
                   button('移除', () => trashDoc(d), 'small quiet')
                 ]
           )
@@ -565,11 +580,15 @@ async function trashDoc(doc) {
     }))
   )
     return
-  await api(base() + '/documents/' + doc.id, 'DELETE', { version: doc.version })
+  await api(base() + '/documents/' + doc.id, 'DELETE', {
+    version: doc.version
+  })
   await afterChange('资料已移入回收站')
 }
 async function restoreDoc(doc) {
-  await api(base() + '/documents/' + doc.id + '/restore', 'POST', { version: doc.version })
+  await api(base() + '/documents/' + doc.id + '/restore', 'POST', {
+    version: doc.version
+  })
   await afterChange('资料已恢复，正在更新索引')
 }
 async function openEditor(id) {
@@ -590,7 +609,10 @@ async function openEditor(id) {
       placeholder: '例如：课程，项目，面试',
       'aria-label': '资料标签'
     })
-  const text = el('textarea', { spellcheck: 'false', 'aria-label': '资料正文' })
+  const text = el('textarea', {
+    spellcheck: 'false',
+    'aria-label': '资料正文'
+  })
   text.value = doc?.text ?? ''
   const count = el('span', {}, number(text.value.length) + ' 字符'),
     saved = el('span', {}, doc ? '已保存 · ' + time(doc.updatedAt) : '新建文本')
@@ -800,7 +822,10 @@ function fileBase64(file) {
   })
 }
 async function uploadFiles() {
-  const files = await chooseFile('.pdf,.docx,.md,.markdown,.txt,.png,.jpg,.jpeg,.webp,.xlsx,.pptx', true),
+  const files = await chooseFile(
+      '.pdf,.docx,.md,.markdown,.txt,.png,.jpg,.jpeg,.webp,.xlsx,.pptx',
+      true
+    ),
     endpoint = base(),
     p = state.project
   if (!files.length) return
@@ -811,13 +836,17 @@ async function uploadFiles() {
     toast(`正在本地解析（OCR可能较慢） ${i + 1} / ${files.length}：${file.name}`)
     try {
       if (file.size > 30 * 1024 * 1024) throw new Error('文件超过30MB')
-      await api(endpoint + '/import', 'POST', { name: file.name, base64: await fileBase64(file) })
+      await api(endpoint + '/import', 'POST', {
+        name: file.name,
+        base64: await fileBase64(file)
+      })
       added++
     } catch (e) {
       failed.push(file.name + '：' + e.message)
     }
   }
-  if (p === state.project) await afterChange(`已导入 ${added} 份资料`)
+  if (p === state.project)
+    await afterChange(`已接收 ${added} 份资料，请到“处理与清洗”复核待处理文件`)
   if (failed.length) showError(new Error(failed.join('\n')))
 }
 async function loadChunks(id, target, offset = 0) {
@@ -1233,3 +1262,270 @@ start().catch((e) => {
   )
   showError(e)
 })
+
+async function startProcessing(doc) {
+  const accepted = await ask(
+    '生成候选清洗结果',
+    '将读取保存的原文件并在本机逐页解析。没有原文件时只处理现有正文；原文与正式索引暂不改变。'
+  )
+  if (!accepted) return
+  const job = await api(base() + '/processing', 'POST', { docId: doc.id })
+  toast('已提交后台处理任务')
+  await navigate('processing')
+  await openProcessing(job.id)
+}
+async function loadProcessing() {
+  if (!(await discard())) return
+  state.dirty = false
+  const target = $('processing-body')
+  if (!target) return
+  try {
+    const jobs = await api(base() + '/processing')
+    target.replaceChildren(
+      el('h2', {}, '处理任务'),
+      button('刷新任务', loadProcessing, 'small'),
+      muted('从资料列表的“处理/清洗”创建候选。复核确认后才能建立并启用新索引。'),
+      ...jobs.map((j) =>
+        el(
+          'div',
+          { class: 'section-row' },
+          el('span', {}, `${j.info.sourceName} · ${j.status} · ${time(j.updatedAt)}`),
+          button('查看报告', () => openProcessing(j.id), 'small')
+        )
+      )
+    )
+    if (!jobs.length) target.append(muted('暂无处理记录。'))
+    const history = await api(base() + '/generations')
+    target.append(
+      el('h3', {}, '索引代际（原文与索引一起回退）'),
+      ...history.items.map((g) =>
+        el(
+          'div',
+          { class: 'section-row' },
+          muted(g.collection + ' · ' + g.status + (g.id === history.active ? ' · 当前启用' : '')),
+          g.status === 'ready' && g.id !== history.active
+            ? button(
+                '回退到此版本',
+                async () => {
+                  const yes = await ask(
+                    '回退原文与索引',
+                    '会恢复该代际保存的正文版本；当前删除和启用状态不同则拒绝回退。现有版本仍保留在修订历史中。'
+                  )
+                  if (!yes) return
+                  await api(base() + '/generations/' + g.id + '/rollback', 'POST', {
+                    confirm: true
+                  })
+                  toast('已回退')
+                  await loadProcessing()
+                },
+                'small'
+              )
+            : null
+        )
+      )
+    )
+  } catch (e) {
+    target.replaceChildren(muted(e.message))
+  }
+}
+async function openProcessing(id) {
+  if (!(await discard())) return
+  state.dirty = false
+  const job = await api(base() + '/processing/' + id),
+    target = $('processing-body')
+  if (!target) return
+  target.replaceChildren(
+    button('返回任务', loadProcessing, 'small'),
+    el('h2', {}, job.info.sourceName),
+    muted(`状态：${job.status} · 原件SHA256：${job.info.sourceHash}`)
+  )
+  if (job.error) target.append(el('p', { class: 'hint' }, job.error))
+  if (['queued', 'scheduled', 'running', 'indexing'].includes(job.status)) {
+    target.append(button('刷新进度', () => openProcessing(id), 'small'))
+    if (job.status !== 'indexing')
+      target.append(
+        button(
+          '取消任务',
+          async () => {
+            await api(base() + '/processing/' + id + '/cancel', 'POST', {})
+            await openProcessing(id)
+          },
+          'small'
+        )
+      )
+  }
+  if (['failed', 'interrupted', 'cancelled'].includes(job.status))
+    target.append(
+      button(
+        '重新处理',
+        async () => {
+          let password
+          if (/密码|加密/.test(job.error || '')) {
+            password = await ask('PDF密码', '只用于本次任务内存，不保存到数据库、日志或备份。', {
+              input: 'PDF密码',
+              password: true
+            })
+            if (!password) return
+          }
+          const next = await api(base() + '/processing/' + id + '/retry', 'POST', { password })
+          await openProcessing(next.id)
+        },
+        'small'
+      )
+    )
+  const result = job.result
+  if (!result) return
+  target.append(
+    muted(
+      `共 ${result.totalPages} 个页面/来源单元，${result.changes.length} 项候选修改。${result.complete ? '页面记录完整' : '有页面失败，不能直接启用'}。非PDF来源单元编号不是PDF页码。`
+    )
+  )
+  target.append(
+    el(
+      'div',
+      { class: 'section-row' },
+      el(
+        'a',
+        { href: base() + '/processing/' + id + '/original', download: '' },
+        '下载本次处理原件核对'
+      ),
+      el('a', { href: base() + '/processing/' + id + '/markdown', download: '' }, '导出Markdown'),
+      el('a', { href: base() + '/processing/' + id + '/json', download: '' }, '导出JSON报告')
+    )
+  )
+  for (const p of result.pages) {
+    const details = el(
+      'details',
+      {},
+      el('summary', {}, `第 ${p.number} 页/来源单元 · ${p.type} · ${p.method} · ${p.status}`),
+      ...p.issues.map((i) => el('p', { class: 'hint' }, `${i.severity}：${i.reason}`)),
+      el('pre', {}, p.elements.map((e) => e.text).join('\n'))
+    )
+    if (['failed', 'review', 'ready'].includes(job.status))
+      details.append(
+        button(
+          p.excluded ? '恢复此页' : '排除此页',
+          async () => {
+            if (!(await discard())) return
+            state.dirty = false
+            const reason = p.excluded
+              ? null
+              : await ask('排除页面', '排除后该页不参与索引，原件与失败记录仍保留。', {
+                  input: '排除原因',
+                  placeholder: '例如：空白附页，已人工核对'
+                })
+            if (!p.excluded && !reason) return
+            const excluded = result.pages
+              .filter((x) => x.excluded && x.number !== p.number)
+              .map((x) => x.number)
+            if (!p.excluded) excluded.push(p.number)
+            const reasons = Object.fromEntries(
+              result.pages.filter((x) => x.excluded).map((x) => [x.number, x.exclusionReason])
+            )
+            if (reason) reasons[p.number] = reason
+            await api(base() + '/processing/' + id + '/review', 'POST', {
+              version: job.updatedAt,
+              excludedPages: excluded,
+              exclusionReasons: reasons
+            })
+            await openProcessing(id)
+          },
+          'small'
+        )
+      )
+    target.append(details)
+  }
+  const original = el('textarea', {
+    readonly: '',
+    rows: '12',
+    'aria-label': '解析原文'
+  })
+  original.value = result.raw
+  const edited = el('textarea', { rows: '16', 'aria-label': '候选清洗正文' })
+  edited.value = result.cleaned
+  edited.addEventListener('input', () => {
+    state.dirty = true
+  })
+  target.append(
+    el('h3', {}, '解析原文（保留）'),
+    original,
+    el('h3', {}, '候选清洗正文（可修正）'),
+    edited
+  )
+  for (const change of result.changes)
+    target.append(
+      el(
+        'details',
+        {},
+        el('summary', {}, `第 ${change.page} 页：${change.reason}`),
+        el('pre', {}, change.before),
+        muted('候选结果已移除；可使用下方按钮恢复该规则的全部删除。')
+      )
+    )
+  if (['review', 'ready'].includes(job.status)) {
+    target.append(
+      button(
+        '恢复全部清洗规则的修改',
+        async () => {
+          if (!(await discard())) return
+          state.dirty = false
+          await api(base() + '/processing/' + id + '/review', 'POST', {
+            disabledRules: ['repeated-margin', 'join-line'],
+            version: job.updatedAt
+          })
+          await openProcessing(id)
+        },
+        'small'
+      )
+    )
+    target.append(
+      button(
+        '保存并确认已核对原件和警告',
+        async () => {
+          const yes = await ask(
+            '确认复核',
+            '请确认已核对页面、数字、链接和质量警告。保存不会立即切换索引；人工改文会使精确字符到页码映射失效。'
+          )
+          if (!yes) return
+          const submitted = edited.value
+          await api(base() + '/processing/' + id + '/review', 'POST', {
+            text: submitted,
+            acknowledged: true,
+            version: job.updatedAt
+          })
+          if (edited.value !== submitted) {
+            toast('已保存提交版本，后续输入仍未保存')
+            return
+          }
+          state.dirty = false
+          toast('已保存复核结果')
+          await openProcessing(id)
+        },
+        'primary'
+      )
+    )
+  }
+  if (job.status === 'ready')
+    target.append(
+      button(
+        '建立候选索引并启用',
+        async () => {
+          if (state.dirty) {
+            toast('请先保存当前修改', true)
+            return
+          }
+          const yes = await ask(
+            '启用复核结果',
+            '将先建立独立候选向量集合，成功校验后才替换当前正文与索引。构建失败会保留当前版本。'
+          )
+          if (!yes) return
+          await api(base() + '/processing/' + id + '/apply', 'POST', {
+            version: job.updatedAt
+          })
+          toast('已开始建立候选索引')
+          await openProcessing(id)
+        },
+        'primary'
+      )
+    )
+}

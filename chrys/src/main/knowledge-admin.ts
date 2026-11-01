@@ -1,3 +1,4 @@
+import { KNOWLEDGE_EXTENSIONS } from '../shared/knowledge'
 import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, writeFile, readFile, stat } from 'node:fs/promises'
 import { basename, extname, join } from 'node:path'
@@ -83,9 +84,9 @@ function upload(raw: unknown) {
     /[\\/]/.test(value.name) ||
     [...value.name].some((c) => c.charCodeAt(0) < 32) ||
     value.name.length > 180 ||
-    !['.pdf', '.docx', '.md', '.markdown', '.txt'].includes(extname(value.name).toLowerCase())
+    !KNOWLEDGE_EXTENSIONS.includes(extname(value.name).slice(1).toLowerCase())
   )
-    throw new AdminError(400, '无效的文件名，支持PDF、DOCX、Markdown和TXT')
+    throw new AdminError(400, '无效的文件名或不支持的资料格式')
   if (
     typeof value.base64 !== 'string' ||
     value.base64.length > Math.ceil(MAX_FILE / 3) * 4 ||

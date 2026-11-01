@@ -1,5 +1,7 @@
+import { openActiveLibrary } from '../../chrys/src/main/library/activation'
+import type { Library } from '../../chrys/src/main/library/repository'
 import { mkdir, readFile, writeFile, rename, readdir, lstat, unlink } from 'node:fs/promises'
-import { join, basename, extname } from 'node:path'
+import { join, basename, extname, dirname, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { normalizeText } from '../../chrys/src/main/knowledge-parse'
 
@@ -80,6 +82,9 @@ export interface Document {
   deletedAt?: number
   originalFile?: string
   source?: string
+  sourceHash?: string
+  sourceFileId?: string
+  sourcePath?: string
   originalBytes?: number
 }
 interface Project {
@@ -119,11 +124,11 @@ function fields(input: Partial<Input>) {
   return result
 }
 function publicDoc(doc: Document, includeText = true) {
-  const { originalFile: _file, originalBytes: _bytes, ...visible } = doc
+  const { originalFile: _file, originalBytes: _bytes, sourcePath: _path, ...visible } = doc
   const result: Record<string, unknown> = {
     ...visible,
     chars: doc.text.length,
-    hasOriginal: Boolean(doc.originalFile)
+    hasOriginal: Boolean(doc.originalFile || doc.sourcePath)
   }
   if (!includeText) delete result.text
   return result as unknown as Document & {
@@ -142,7 +147,16 @@ export async function atomic(path: string, value: unknown): Promise<void> {
 }
 export class Store {
   private queues = new Map<string, Promise<unknown>>()
-  constructor(public root: string) {}
+  private library: Library | undefined
+  constructor(public root: string) {
+    this.library = openActiveLibrary(join(root, '..'))
+  }
+  getLibrary() {
+    return this.library
+  }
+  close() {
+    this.library?.close()
+  }
   path(id: string) {
     return join(this.root, 'projects', validId(id))
   }
@@ -152,6 +166,16 @@ export class Store {
   }
   private async read(id: string): Promise<Project> {
     const dir = this.path(id)
+    if (this.library) {
+      const project = this.library.projects().find((p: any) => p.id === id) as any
+      if (!project) throw new ApiError(404, '找不到这个项目')
+      return {
+        id,
+        name: project.name,
+        createdAt: 0,
+        documents: [...this.library.list(id), ...this.library.list(id, true)]
+      } as Project
+    }
     try {
       await this.safe(dir)
       await this.safe(join(dir, 'project.json'))
@@ -168,8 +192,16 @@ export class Store {
     validId(id)
     const job = (this.queues.get(id) ?? Promise.resolve()).then(async () => {
       const p = await this.read(id),
+        baseline = p.documents.map((d) => ({ id: d.id, version: d.version })),
         result = await task(p)
-      await atomic(join(this.path(id), 'project.json'), p)
+      if (this.library) {
+        try {
+          this.library.replaceProject(id, p.documents, baseline)
+        } catch (e) {
+          if (String(e).includes('冲突')) throw new ApiError(409, '资料已被修改，请刷新重试')
+          throw e
+        }
+      } else await atomic(join(this.path(id), 'project.json'), p)
       return result
     })
     this.queues.set(
@@ -179,6 +211,17 @@ export class Store {
     return job
   }
   async projects() {
+    if (this.library)
+      return this.library
+        .projects()
+        .filter((p: any) => ID.test(p.id))
+        .map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          kind: 'managed',
+          documents: this.library!.list(p.id).length,
+          collection: this.collection(p.id)
+        }))
     await mkdir(join(this.root, 'projects'), { recursive: true })
     const entries = await readdir(join(this.root, 'projects'), {
       withFileTypes: true
@@ -207,7 +250,8 @@ export class Store {
       documents: []
     }
     await mkdir(join(this.path(p.id), 'originals'), { recursive: true })
-    await atomic(join(this.path(p.id), 'project.json'), p)
+    if (this.library) this.library.project(p.id, p.name)
+    else await atomic(join(this.path(p.id), 'project.json'), p)
     return {
       id: p.id,
       name: p.name,
@@ -307,6 +351,15 @@ export class Store {
   async original(project: string, id: string): Promise<{ name: string; data: Buffer }> {
     const doc = (await this.read(project)).documents.find((d) => d.id === validId(id))
     if (!doc) throw new ApiError(404, '找不到这份资料')
+    if (doc.sourcePath) {
+      const expected = resolve(this.root, '../library/originals')
+      if (dirname(doc.sourcePath) !== expected) throw new ApiError(400, '原件路径无效')
+      await this.safe(doc.sourcePath)
+      return {
+        name: doc.source || `${doc.name}.txt`,
+        data: await readFile(doc.sourcePath)
+      }
+    }
     if (!doc.originalFile) return { name: `${doc.name}.txt`, data: Buffer.from(doc.text) }
     if (!/^[0-9a-f-]+\.bin$/.test(doc.originalFile)) throw new ApiError(400, '源文件记录无效')
     const dir = join(this.path(project), 'originals'),
@@ -324,7 +377,8 @@ export class Store {
     const p = await this.read(project),
       documents = []
     for (const doc of p.documents) {
-      const original = doc.originalFile ? await this.original(project, doc.id) : undefined
+      const original =
+        doc.originalFile || doc.sourcePath ? await this.original(project, doc.id) : undefined
       documents.push({
         ...publicDoc(doc),
         ...(original

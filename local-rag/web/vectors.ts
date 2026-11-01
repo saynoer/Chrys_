@@ -1,15 +1,11 @@
+import { buildGeneration, retrieveGeneration } from '../../chrys/src/main/library/generations'
 import { existsSync, readFileSync, lstatSync } from 'node:fs'
 import { join } from 'node:path'
 import { Store, atomic, ApiError } from './store'
 import { RagIndex } from '../../chrys/src/main/rag/index'
 import { chunkDocument, revisionOf } from '../../chrys/src/main/rag/chunks'
 import * as client from '../../chrys/src/main/rag/client'
-import {
-  CHROMA_URL,
-  COLLECTION,
-  type RagChunk,
-  type RagHit
-} from '../../chrys/src/shared/rag'
+import { CHROMA_URL, COLLECTION, type RagChunk, type RagHit } from '../../chrys/src/shared/rag'
 export const COLLECTIONS = `${CHROMA_URL}/api/v2/tenants/default_tenant/databases/default_database/collections`
 export function vectorIO(store: Store, project: string) {
   const name = store.collection(project),
@@ -20,7 +16,11 @@ export function vectorIO(store: Store, project: string) {
     const c = await client.request<{ id: string }>(
       write ? COLLECTIONS : `${COLLECTIONS}/${name}`,
       write
-        ? { name, get_or_create: true, configuration: { hnsw: { space: 'cosine' } } }
+        ? {
+            name,
+            get_or_create: true,
+            configuration: { hnsw: { space: 'cosine' } }
+          }
         : undefined
     )
     return `${COLLECTIONS}/${c.id}`
@@ -77,6 +77,7 @@ export function vectorIO(store: Store, project: string) {
 }
 type IO = ConstructorParameters<typeof RagIndex>[0]
 export class Indexes {
+  private building = new Map<string, Promise<unknown>>()
   private indexes = new Map<string, RagIndex>()
   constructor(
     private store: Store,
@@ -101,9 +102,29 @@ export class Indexes {
     return { index, docs }
   }
   async status(project: string) {
+    const gen = this.store.getLibrary()?.generation(project)
+    if (gen)
+      return {
+        state: this.building.has(project) ? 'indexing' : 'ready',
+        message: '结构化索引',
+        documents: (await this.store.list(project)).length,
+        chunks: gen.chunks.length
+      }
     return (await this.current(project)).index.getStatus()
   }
   async rebuild(project: string, force = false) {
+    const library = this.store.getLibrary()
+    if (library?.generation(project)) {
+      const previous = this.building.get(project) || Promise.resolve()
+      const job = previous.catch(() => {}).then(() => buildGeneration(library, project))
+      this.building.set(project, job)
+      void job
+        .catch(() => {})
+        .finally(() => {
+          if (this.building.get(project) === job) this.building.delete(project)
+        })
+      return this.status(project)
+    }
     const { index, docs } = await this.current(project)
     const job = index.reconcile(
       docs.map((d) => ({
@@ -122,7 +143,9 @@ export class Indexes {
     if (typeof query !== 'string' || !query.trim() || query.length > 2000)
       throw new ApiError(400, '请输入1至2000字符的问题')
     if (mode !== 'screenshot' && mode !== 'conversation') throw new ApiError(400, '无效的检索模式')
-    const hits = await (await this.current(project)).index.retrieve(mode, query)
+    const library = this.store.getLibrary(),
+      structured = library ? await retrieveGeneration(library, project, query, mode) : undefined
+    const hits = structured ?? (await (await this.current(project)).index.retrieve(mode, query))
     const live = await this.store.list(project, { text: true })
     return hits.filter((h) =>
       live.some(

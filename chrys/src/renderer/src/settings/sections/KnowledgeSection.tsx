@@ -151,6 +151,7 @@ export function KnowledgeSection() {
   return (
     <div className="relative" {...dropHandlers}>
       <RagSettings />
+      <a href="http://127.0.0.1:18080/" target="_blank" rel="noreferrer" className="text-sm underline">打开本机知识库管理与清洗报告</a>
       <SettingsCard Icon={LibraryBig} title="资料库">
         <p className="-mt-2 mb-4 text-xs font-light">
           导入简历、准备好的问答、笔记等资料，AI
@@ -185,7 +186,7 @@ export function KnowledgeSection() {
             新建文本
           </Button>
           <span className="text-xs font-light">
-            支持 PDF（含扫描件）、DOCX、Markdown、TXT、PNG/JPG/WebP、XLSX、PPTX；图片与扫描件在本机
+            SQLite资料库启用后，新导入文件需到本机管理网页的“处理与清洗”复核，再启用到回答模式。支持 PDF（含扫描件）、DOCX、Markdown、TXT、PNG/JPG/WebP、XLSX、PPTX；图片与扫描件在本机
             OCR，耗时可能较长。也可拖入文件。
           </span>
         </div>

@@ -6,7 +6,7 @@ const test = require('node:test'),
   { spawn } = require('node:child_process')
 const enabled = process.env.CHRYS_TEST_OCR === '1'
 const root = path.resolve(__dirname, '..')
-async function parse(data, ext, assets = path.join(root, 'resources/ocr')) {
+async function parse(data, ext, assets = path.join(root, 'resources/ocr'), detailed = false) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'chrys-real-test-')),
     file = path.join(dir, 'input.' + ext)
   try {
@@ -14,7 +14,7 @@ async function parse(data, ext, assets = path.join(root, 'resources/ocr')) {
     return await new Promise((resolve, reject) => {
       const child = spawn(
         process.execPath,
-        [path.join(root, 'out/main/document-worker.cjs'), file, ext],
+        [path.join(root, 'out/main/document-worker.cjs'), file, ext, ...(detailed?['analysis']:[])],
         { env: { ...process.env, CHRYS_OCR_DATA: assets }, stdio: ['ignore', 'pipe', 'pipe'] }
       )
       let output = ''
@@ -27,7 +27,7 @@ async function parse(data, ext, assets = path.join(root, 'resources/ocr')) {
         try {
           const result = JSON.parse(output)
           if (code || result.error) reject(Error(result.error || 'worker failed'))
-          else resolve(result.text)
+          else resolve(detailed?result.analysis:result.text)
         } catch (e) {
           reject(e)
         }
@@ -50,12 +50,13 @@ function picture() {
   ctx.fillText('Chrys local OCR code 8642', 40, 210)
   return c
 }
-function pdfWithImage(jpeg) {
+function pdfWithImage(jpeg,native='') {
+ const command='q 750 0 0 150 0 0 cm /Im0 Do Q'+(native?'\nBT /F1 10 Tf 20 15 Td ('+native+') Tj ET':'')
   const objects = [
     Buffer.from('<< /Type /Catalog /Pages 2 0 R >>'),
     Buffer.from('<< /Type /Pages /Kids [3 0 R 6 0 R] /Count 2 >>'),
     Buffer.from(
-      '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 750 150] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>'
+      '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 750 150] /Resources << /Font << /F1 8 0 R >> /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>'
     ),
     Buffer.concat([
       Buffer.from(
@@ -64,7 +65,7 @@ function pdfWithImage(jpeg) {
       jpeg,
       Buffer.from('\nendstream')
     ]),
-    Buffer.from('<< /Length 31 >>\nstream\nq 750 0 0 150 0 0 cm /Im0 Do Q\nendstream'),
+    Buffer.from(`<< /Length ${Buffer.byteLength(command)} >>\nstream\n${command}\nendstream`),
     Buffer.from(
       '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 750 150] /Resources << /Font << /F1 8 0 R >> >> /Contents 7 0 R >>'
     ),
@@ -127,4 +128,14 @@ test('real PPTX image OCR and notes are both parsed offline', { skip: !enabled }
   const text = await parse(await zip.generateAsync({ type: 'nodebuffer' }), 'pptx')
   assert.match(text, /5551/)
   assert.match(text, /8642/)
+})
+
+test('structured PDF analysis OCRs a scan even when it has a small text watermark',{skip:!enabled},async()=>{
+ const report=await parse(pdfWithImage(picture().toBuffer('image/jpeg'),'Page 1'),'pdf',path.join(root,'resources/ocr'),true)
+ assert.equal(report.totalPages,2);assert.equal(report.pages[0].type,'scan');assert.match(report.cleaned,/8642/);assert.match(report.cleaned,/9753/);assert.ok(report.complete);assert.ok(report.sources.length)
+})
+test('structured mixed page preserves native text and OCRs embedded image text',{skip:!enabled},async()=>{
+ const native='Original native paragraph fact 5559 '+ 'complete document text '.repeat(8)
+ const report=await parse(pdfWithImage(picture().toBuffer('image/jpeg'),native),'pdf',path.join(root,'resources/ocr'),true)
+ assert.equal(report.pages[0].type,'mixed');assert.match(report.cleaned,/5559/);assert.match(report.cleaned,/8642/)
 })

@@ -22,6 +22,13 @@ class LifecycleTests(unittest.TestCase):
             plan=self.m.uninstall_plan(root,{'consumers':['shiping']})
             self.assertFalse(plan['can_remove_shared'])
             self.assertIn('web-project:owned-project',plan['other_consumers'])
+    def test_sqlite_projects_block_shared_removal(self):
+        import sqlite3
+        with tempfile.TemporaryDirectory() as d:
+            root=pathlib.Path(d); folder=root/'data/library';folder.mkdir(parents=True)
+            db=sqlite3.connect(folder/'chrys.sqlite');db.execute('CREATE TABLE projects(id TEXT PRIMARY KEY,name TEXT)');db.execute("INSERT INTO projects VALUES('new-sqlite-project','P')");db.commit();db.close()
+            plan=self.m.uninstall_plan(root,{'consumers':['shiping']})
+            self.assertFalse(plan['can_remove_shared']);self.assertIn('web-project:new-sqlite-project',plan['other_consumers'])
     def test_start_provisions_directories_and_tracks_owned_http_service(self):
         with tempfile.TemporaryDirectory() as d:
             root=pathlib.Path(d)

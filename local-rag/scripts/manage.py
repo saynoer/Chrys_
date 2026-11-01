@@ -1,5 +1,5 @@
 """Owned, manual-only local RAG service lifecycle."""
-import argparse, json, os, pathlib, socket, subprocess, sys, time, urllib.request, shutil, datetime
+import argparse, json, os, pathlib, socket, subprocess, sys, time, urllib.request, shutil, datetime, sqlite3
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 _children = {}
 def require_free(port):
@@ -21,6 +21,12 @@ def uninstall_plan(root, manifest):
     projects=root/'data/admin/projects'
     if projects.exists():
         others.extend('web-project:'+p.name for p in projects.iterdir() if p.is_dir() and not p.is_symlink() and (p/'project.json').is_file())
+    database=root/'data/library/chrys.sqlite'
+    if database.exists():
+        connection=sqlite3.connect(database.as_uri()+'?mode=ro',uri=True)
+        try: others.extend('web-project:'+row[0] for row in connection.execute("SELECT id FROM projects WHERE id!='shiping'"))
+        finally: connection.close()
+    others=sorted(set(others))
     return {'dry_run':True,'root':str(root),'other_consumers':others,'can_remove_shared':not others,'steps':['stop owned services','back up all collections and manifest','confirm deletion of owned runtime/models/data only'],'original_documents':'preserved'}
 def manifest():
     p=ROOT/'manifest.json'
@@ -85,7 +91,12 @@ def stop(names=None):
     record('stop','only matching owned process identities signalled')
 def backup():
     if any(x['owned'] for x in status().values()): raise RuntimeError('Stop services before consistent backup')
-    dest=ROOT/'backups'/time.strftime('%Y%m%d-%H%M%S'); dest.mkdir(parents=True)
+    discovery=ROOT/'data/shiping-trial/rag/admin-bridge.json'
+    if discovery.exists():
+        desktop_pid=json.loads(discovery.read_text()).get('pid')
+        command,_=identity(desktop_pid) if desktop_pid else ('','')
+        if '/Contents/MacOS/Chrys' in command: raise RuntimeError('请先退出Chrys桌面应用，再进行完整备份')
+    dest=ROOT/'backups'/time.strftime('%Y%m%d-%H%M%S'); dest.mkdir(parents=True,mode=0o700)
     shutil.copytree(ROOT/'data',dest/'data'); shutil.copy2(ROOT/'manifest.json',dest/'manifest.json'); record('backup',str(dest)); return str(dest)
 if __name__=='__main__':
     a=argparse.ArgumentParser(); a.add_argument('action',choices=['start','status','stop','start-admin','stop-admin','backup','uninstall-plan']); args=a.parse_args()

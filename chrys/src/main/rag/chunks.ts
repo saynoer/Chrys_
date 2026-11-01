@@ -115,7 +115,9 @@ export function formatContext(hits: RagHit[]): string {
     if (seen.has(hit.id) || count >= 6) continue
     seen.add(hit.id)
     const name = hit.name.replace(/[<>"&]/g, '_').slice(0, 80)
-    const head = `\n<资料 来源="${name}" 位置="${hit.start}-${hit.end}" 章节="${(hit.section ?? '').replace(/[<>"&]/g, '_').slice(0, 300)}">\n`,
+    const provenance=hit as RagHit & {pages?:number[];sourceName?:string}
+    const pageLabel=provenance.pages?.length?` 页码="${provenance.pages.join(',')}"`:''
+    const head = `\n<资料${pageLabel} 来源="${name}" 位置="${hit.start}-${hit.end}" 章节="${(hit.section ?? '').replace(/[<>"&]/g, '_').slice(0, 300)}">\n`,
       tail = '\n</资料>\n'
     const room = 6000 - result.length - head.length - tail.length
     if (room <= 0) break

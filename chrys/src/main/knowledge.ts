@@ -1,3 +1,6 @@
+import { readFile } from 'node:fs/promises'
+import { submitDocument } from './document-processing/submit'
+import { openActiveLibrary } from './library/activation'
 import { revisionOf } from './rag/chunks'
 import type { RagDocument } from '../shared/rag'
 import { app, dialog, ipcMain } from 'electron'
@@ -34,6 +37,9 @@ function storeDir(): string {
   return join(app.getPath('userData'), 'knowledge')
 }
 
+const library = openActiveLibrary(join(app.getPath('userData'), '..'))
+let mutating = false
+let baseline: { id: string; version: string }[] = []
 const indexPath = () => join(storeDir(), 'index.json')
 const textPath = (id: string, file?: string) => {
   if (file && (basename(file) !== file || !file.endsWith('.txt'))) throw new Error('无效资料文件名')
@@ -42,6 +48,21 @@ const textPath = (id: string, file?: string) => {
 
 /** The list and every text, read from disk on first use */
 function load(): KnowledgeDoc[] {
+  if (library) {
+    if (mutating && docs) return docs
+    const rows = [...library.list('shiping'), ...library.list('shiping', true)]
+    baseline = rows.map((r) => ({ id: r.id, version: r.version }))
+    texts.clear()
+    docs = rows.map((row) => {
+      const { text, textHash, revisionId, version, ...meta } = row
+      void textHash
+      void revisionId
+      void version
+      texts.set(row.id, text)
+      return meta as KnowledgeDoc
+    })
+    return docs
+  }
   if (docs) return docs
   docs = []
   try {
@@ -77,6 +98,15 @@ async function writeAtomic(path: string, content: string) {
 }
 
 function saveIndex(): Promise<void> {
+  if (library) {
+    const rows = (docs ?? []).map((d) => ({ ...d, text: texts.get(d.id) ?? '' }))
+    library.replaceProject('shiping', rows, baseline)
+    baseline = [...library.list('shiping'), ...library.list('shiping', true)].map((d) => ({
+      id: d.id,
+      version: d.version
+    }))
+    return Promise.resolve()
+  }
   const snapshot = JSON.stringify(load(), null, 2)
   return persist(async () => {
     mkdirSync(storeDir(), { recursive: true })
@@ -85,6 +115,7 @@ function saveIndex(): Promise<void> {
 }
 
 async function saveText(id: string, text: string): Promise<string> {
+  if (library) return `${id}-sqlite.txt`
   const file = `${id}-${randomUUID()}.txt`
   await persist(async () => {
     mkdirSync(storeDir(), { recursive: true })
@@ -129,6 +160,19 @@ async function importFiles(paths: string[]): Promise<KnowledgeImportResult> {
   for (const path of paths) {
     const fileName = basename(path)
     try {
+      if (library) {
+        const data = await readFile(path)
+        const job = await submitDocument(
+          library,
+          join(app.getPath('userData'), '../library'),
+          'shiping',
+          { name: fileName, data }
+        )
+        load()
+        result.added.push(desktopDoc(job.docId))
+        notifyKnowledge()
+        continue
+      }
       const text = await extractFileText(path)
       const name = basename(fileName, extname(fileName))
       const added = await mutate(() => addDoc(name, text, { name: fileName, path }))
@@ -172,6 +216,22 @@ async function reimportDoc(
   const doc = load().find((d) => d.id === id)
   if (!doc?.sourcePath) return { error: '这份资料不是从文件导入的' }
   try {
+    if (library) {
+      checkKnowledgeVersion(doc, texts.get(id) ?? '', expected)
+      const data = await readFile(doc.sourcePath)
+      const current = load().find((d) => d.id === id)
+      if (!current) throw Error('资料已移除，请刷新')
+      checkKnowledgeVersion(current, texts.get(id) ?? '', expected)
+      await submitDocument(
+        library,
+        join(app.getPath('userData'), '../library'),
+        'shiping',
+        { name: basename(doc.sourcePath), data },
+        id
+      )
+      notifyKnowledge()
+      return { doc: desktopDoc(id) }
+    }
     const text = await extractFileText(doc.sourcePath)
     await mutate(async () => {
       const current = load().find((d) => d.id === id)
@@ -292,10 +352,11 @@ function mutate<T>(task: () => Promise<T>): Promise<T> {
   const current = mutations.then(async () => {
     const before = structuredClone(load()),
       oldTexts = new Map(texts)
+    mutating = true
     try {
       const value = await task()
       notifyKnowledge()
-      for (const previous of before) {
+      for (const previous of library ? [] : before) {
         const current = load().find((d) => d.id === previous.id)
         if (current && current.storageFile !== previous.storageFile) {
           await persist(() => unlink(textPath(previous.id, previous.storageFile)).catch(() => {}))
@@ -308,6 +369,8 @@ function mutate<T>(task: () => Promise<T>): Promise<T> {
       for (const [id, text] of oldTexts) texts.set(id, text)
       notifyKnowledge()
       throw error
+    } finally {
+      mutating = false
     }
   })
   mutations = current.catch(() => {})
@@ -323,3 +386,12 @@ export const knowledgeAdmin = createKnowledgeAdmin({
   saveIndex,
   storeDir
 })
+
+export function getLibrary() {
+  return library
+}
+
+export function refreshKnowledge() {
+  load()
+  notifyKnowledge()
+}

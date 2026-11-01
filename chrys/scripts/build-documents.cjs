@@ -9,3 +9,5 @@ require('esbuild').buildSync({
   packages: 'external'
 })
 console.log('本地文档解析组件构建完成')
+
+require('./build-library-tools.cjs')

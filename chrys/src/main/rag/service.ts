@@ -1,3 +1,4 @@
+import { buildGeneration, retrieveGeneration } from '../library/generations'
 import { app } from 'electron'
 import { mkdir, writeFile, rename } from 'node:fs/promises'
 import { readFileSync, existsSync } from 'node:fs'
@@ -5,7 +6,7 @@ import { join } from 'node:path'
 import type { ModelMessage } from 'ai'
 import type { AppMode } from '../../shared/api-profile'
 import { settings } from '../settings'
-import { getKnowledgePrompt, getRagDocuments, onKnowledgeChanged } from '../knowledge'
+import { getKnowledgePrompt, getRagDocuments, onKnowledgeChanged, getLibrary } from '../knowledge'
 import { RagIndex } from './index'
 import * as client from './client'
 import { extractQuery } from './query'
@@ -34,14 +35,50 @@ export function getIndex(): RagIndex {
 }
 let timer: ReturnType<typeof setTimeout> | undefined
 let clearing = false
+let generationBuilding = false,
+  generationAgain = false
+let generationError = ''
 let afterClear: boolean | undefined
 export function getRagStatus() {
+  const gen = getLibrary?.()?.generation('shiping')
+  if (gen)
+    return {
+      state: generationBuilding
+        ? ('indexing' as const)
+        : generationError
+          ? ('error' as const)
+          : ('ready' as const),
+      message: generationError || (generationBuilding ? '正在构建候选索引' : '结构化索引就绪'),
+      documents: getRagDocuments().filter((d) => d.modes.length).length,
+      chunks: gen.chunks.length
+    }
   const status = getIndex().getStatus()
   return clearing
     ? { ...status, state: 'indexing' as const, message: '正在清除索引，后续更新已排队' }
     : status
 }
 export function queueReconcile(force = false): void {
+  const library = getLibrary?.()
+  if (library?.generation('shiping')) {
+    if (generationBuilding) {
+      generationAgain = true
+      return
+    }
+    generationBuilding = true
+    generationError = ''
+    void buildGeneration(library, 'shiping')
+      .catch((e) => {
+        generationError = String(e.message || e)
+      })
+      .finally(() => {
+        generationBuilding = false
+        if (generationAgain) {
+          generationAgain = false
+          queueReconcile(force)
+        }
+      })
+    return
+  }
   if (clearing) {
     afterClear = Boolean(afterClear || force)
     return
@@ -51,8 +88,8 @@ export function queueReconcile(force = false): void {
     .catch(() => {})
 }
 onKnowledgeChanged(() => {
-  if (!index) return
-  index.setDocuments(getRagDocuments())
+  if (!index && !getLibrary?.()?.generation('shiping')) return
+  index?.setDocuments(getRagDocuments())
   if (clearing && settings.ragConfig.mode === 'local') {
     afterClear = afterClear ?? false
     return
@@ -65,10 +102,17 @@ onKnowledgeChanged(() => {
   }
 })
 export async function rebuild(): Promise<void> {
+  const library = getLibrary?.()
+  if (library?.generation('shiping')) {
+    await buildGeneration(library, 'shiping')
+    return
+  }
   if (clearing) throw new Error('正在清除索引，请稍后重试')
   await getIndex().reconcile(getRagDocuments(), true)
 }
 export async function clear(): Promise<void> {
+  if (getLibrary?.()?.generation('shiping'))
+    throw Error('结构化索引保留用于回退；请通过处理报告重建，暂不物理删除代际')
   if (clearing || getIndex().getStatus().state === 'indexing')
     throw new Error('请等待索引任务完成再清除')
   if (timer) {
@@ -99,8 +143,7 @@ export async function getRagContext(
   if (clearing) throw new Error('正在清除资料索引，请稍后重试')
   const query = extractQuery(messages)
   if (!query) return '当前问题只有图片，没有可供本地文本检索的文字；本轮未附带资料库内容。'
-  const idx = getIndex(),
-    hits = await idx.retrieve(mode, query, signal)
+  const hits = await searchRag(query, mode, signal)
   // Refresh authoritative document state after asynchronous retrieval as well.
   const live = getRagDocuments()
   return formatContext(
@@ -108,4 +151,13 @@ export async function getRagContext(
       live.some((d) => d.id === h.docId && d.revision === h.revision && d.modes.includes(mode))
     )
   )
+}
+
+export async function searchRag(query: string, mode: AppMode, signal?: AbortSignal) {
+  const library = getLibrary?.()
+  if (library) {
+    const hits = await retrieveGeneration(library, 'shiping', query, mode, signal)
+    if (hits !== undefined) return hits
+  }
+  return getIndex().retrieve(mode, query, signal)
 }
